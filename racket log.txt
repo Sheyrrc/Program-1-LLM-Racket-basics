@@ -1,0 +1,1480 @@
+.LOG
+Using deepseek, claude and chatgpt
+
+5:36 PM 1/27/2025
+- Prompt:
+how to read file and ask user for file name on racket
+
+AI code:
+#lang racket
+
+(define (read-file-contents filename)
+  (define in (open-input-file filename))
+  (define contents (port->string in))
+  (close-input-port in)
+  contents)
+
+(define (ask-for-filename)
+  (display "Enter the file name: ")
+  (read-line))
+
+(define (main)
+  (define filename (ask-for-filename))
+  (with-handlers ([exn:fail? (lambda (exn)
+                               (displayln "Error: File not found or unable to read.")
+                               (exit))])
+    (define contents (read-file-contents filename))
+    (displayln "File contents:")
+    (displayln contents)))
+
+(main)
+
+
+6:11 PM 1/27/2025
+- Prompt:
+how to differentiate between a file not found and a file unable to be read?
+
+AI Code:
+(define (main)
+  (define filename (ask-for-filename))
+  (with-handlers ([exn:fail:filesystem:errno?
+                    (lambda (exn)
+                      (define errno (exn:fail:filesystem-errno exn))
+                      (cond
+                        [(= errno (system-error-code 'ENOENT))
+                         (displayln "Error: File not found.")]
+                        [(= errno (system-error-code 'EACCES))
+                         (displayln "Error: Permission denied. Unable to read file.")]
+                        [else
+                         (displayln "Error: Unable to read file due to an unknown filesystem error.")]))]
+                 [exn:fail?
+                  (lambda (exn)
+                    (displayln "Error: An unexpected error occurred."))])
+    (define contents (read-file-contents filename))
+    (displayln "File contents:")
+    (displayln contents)))
+
+Error:
+PS C:\Users\Sheyla\Downloads\DataFiles> racket "c:\Users\Sheyla\Downloads\DataFiles\tempCodeRunnerFile.racket"
+c:\Users\Sheyla\Downloads\DataFiles\tempCodeRunnerFile.racket:17:37: exn:fail:filesystem-errno: unbound identifier
+  in: exn:fail:filesystem-errno
+  location...:
+   c:\Users\Sheyla\Downloads\DataFiles\tempCodeRunnerFile.racket:17:37
+PS C:\Users\Sheyla\Downloads\DataFiles>
+
+AI Response:
+The error you're encountering (exn:fail:filesystem-errno: unbound identifier) indicates that the identifier exn:fail:filesystem-errno is not recognized in your version of Racket. 
+This might be because the function or accessor for extracting the errno value from the exception has changed or is not available in your environment.
+
+To fix this, we can use a more general approach to handle filesystem errors without relying on exn:fail:filesystem-errno. 
+Instead, we can inspect the exception message to determine the type of error.
+
+AI Fix:
+(define (main)
+  (define filename (ask-for-filename))
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied. Unable to read file.")]
+                       [else
+                        (displayln "Error: Unable to read file due to an unknown error.")]))])
+    (define contents (read-file-contents filename))
+    (displayln "File contents:")
+    (displayln contents)))
+Wonder:
+For some reason, seems like file is in directory, but im not able to read it.
+
+6:25 PM 1/27/2025
+- Prompt:
+When file is not read,  ask for file name again
+
+AI Code:
+(define (main)
+  (let loop ()
+    (define filename (ask-for-filename))
+    (with-handlers ([exn:fail?
+                     (lambda (exn)
+                       (define msg (exn-message exn))
+                       (cond
+                         [(string-contains? msg "No such file or directory")
+                          (displayln "Error: File not found. Please try again.")]
+                         [(string-contains? msg "Permission denied")
+                          (displayln "Error: Permission denied. Unable to read file. Please try again.")]
+                         [else
+                          (displayln "Error: Unable to read file due to an unknown error. Please try again.")])
+                       (loop))]) ; Ask for the file name again
+      (define contents (read-file-contents filename))
+      (displayln "File contents:")
+      (displayln contents))))
+
+
+9:35 PM 1/30/2025
+- Prompt:
+How do i make it read the file "DataFile that within it has files Data-1.txt to Data-7.txt
+
+AI Code:
+;; Function to list and filter files in a directory
+(define (get-data-files dir)
+  (filter
+   (lambda (path)
+     (and (file-exists? path)
+          (regexp-match? #rx"Data-\\d+\\.txt$" (path->string path))))
+   (directory-list dir #:build? #t)))
+
+;; Main function
+(define (main)
+  (define data-dir "DataFile") ; Directory containing the files
+  (define data-files (get-data-files data-dir))
+
+  (if (null? data-files)
+      (displayln "No valid Data-*.txt files found in the directory.")
+      (for-each
+       (lambda (file)
+         (displayln (format "Reading file: ~a" file))
+         (define contents (read-file-contents file))
+         (displayln contents)
+         (displayln "-------------------"))
+       data-files)))
+
+10:27 PM 1/30/2025
+- Prompt:
+how do i make sure the loop keeps askign for a file unless specified by 'Q'
+
+AI Code:
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)  ; Required for `string-split`
+
+(define (read-file-contents filename) 
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  ; Return `#f` to indicate failure
+    (let ([in (open-input-file filename)])  ; Move inside `with-handlers`
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'Q' to quit): ")
+  (let ([filename (string-trim (read-line))])  ; Trim spaces
+    (if (string-ci=? filename "Q")  ; Case-insensitive check for 'Q'
+        #f  ; Return `#f` to indicate quitting
+        filename)))  ; Otherwise, return the filename
+
+(define (main)
+  (let loop ()
+    (define filename (ask-for-filename))
+    (if filename  ; If `filename` is `#f`, exit loop
+        (let ([contents (read-file-contents filename)])
+          (if contents
+              (begin
+                (displayln "File contents:")
+                (displayln contents))
+              (displayln "Please try again."))  ; Show error and retry
+          (loop))  ; Ask again
+        (displayln "Goodbye!"))))  ; Quit message
+
+(main)
+
+
+5:42 PM 2/5/2025
+Now using Claude
+- Prompt:
+Your program will implement an integer-sorting routine – a counting sort. You will need to do
+this in a couple of steps. Note that your code cannot call the library sort function. 
+
+AI Code:
+; First define a function to find the maximum value in the list
+(define (find-max lst)
+  (if (empty? lst)
+      0
+      (foldl max (first lst) (rest lst))))
+
+; Counting sort implementation
+(define (counting-sort lst)
+  (if (empty? lst)
+      '()  ; Return empty list if input is empty
+      (let* ([max-val (find-max lst)]
+             [counts (make-vector (add1 max-val) 0)])  ; Create count array
+        
+        ; Step 1: Count occurrences of each number
+        (for ([num lst])
+          (vector-set! counts num (add1 (vector-ref counts num))))
+        
+        ; Step 2: Reconstruct the sorted list
+        (let loop ([index 0]
+                   [result '()])
+          (if (> index max-val)
+              (reverse result)  ; Return the final sorted list
+              (let inner-loop ([count (vector-ref counts index)]
+                             [current-result result])
+                (if (zero? count)
+                    (loop (add1 index) current-result)
+                    (inner-loop (sub1 count) 
+                               (cons index current-result)))))))))
+
+8:05 PM 2/6/2025
+- Prompt:
+Your program will implement an integer-sorting routine – a counting sort. You will need to dothis in a couple of steps. Note that your code cannot call the library sort function. (An AI willwant to call it at some point.)• Your program will be given a text file of integers (positive or negative, but all will fit within 32bits). You should carry out two steps:◦ Consolidate the list into a list of value-frequency pairs. Given the list (1 2 3 2 2 3 5 -1), youwould produce ( (-1 1) (1 1) (2 3) (3 2) (5 1) ).◦ Given the list of value-count pairs, produce a sorted list; that is, from the above you wouldproduce (-1 1 2 2 2 3 3 5).
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Convert string of numbers to list of integers
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+; Create value-frequency pairs from a list of numbers
+(define (consolidate-numbers numbers)
+  (let loop ([nums (sort numbers <)]  ; First sort to group identical numbers
+             [current-num #f]
+             [current-count 0]
+             [result '()])
+    (cond
+      [(null? nums)  ; If we're done with the list
+       (if current-num
+           (cons (list current-num current-count) result)  ; Add final pair
+           result)]
+      [(not current-num)  ; First number
+       (loop (cdr nums) (car nums) 1 result)]
+      [(= current-num (car nums))  ; Same number as current
+       (loop (cdr nums) current-num (add1 current-count) result)]
+      [else  ; Different number
+       (loop (cdr nums)
+             (car nums)
+             1
+             (cons (list current-num current-count) result))])))
+
+; Expand value-frequency pairs into sorted list
+(define (expand-pairs pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'q' to quit): ")
+  (let ([filename (string-trim (read-line))])
+    (if (string-ci=? filename "q")
+        #f
+        filename)))
+
+(define (main)
+  (let loop ()
+    (define filename (ask-for-filename))
+    (if filename
+        (let ([contents (read-file-contents filename)])
+          (if contents
+              (let* ([numbers (parse-numbers contents)]
+                     [pairs (consolidate-numbers numbers)]
+                     [sorted (expand-pairs pairs)])
+                (newline)
+                (displayln "Original numbers:")
+                (displayln numbers)
+                (displayln "\nValue-frequency pairs:")
+                (displayln pairs)
+                (displayln "\nSorted numbers:")
+                (displayln sorted))
+              (displayln "Please try again."))
+          (loop))
+        (displayln "Goodbye! <3"))))
+
+(main)
+
+
+8:19 PM 2/6/2025
+- Prompt:
+Show original data then sorted data
+
+AI Code:
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Convert string of numbers to list of integers
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+; Create value-frequency pairs from a list of numbers
+(define (consolidate-numbers numbers)
+  (let loop ([nums (sort numbers <)]
+             [current-num #f]
+             [current-count 0]
+             [result '()])
+    (cond
+      [(null? nums)
+       (if current-num
+           (cons (list current-num current-count) result)
+           result)]
+      [(not current-num)
+       (loop (cdr nums) (car nums) 1 result)]
+      [(= current-num (car nums))
+       (loop (cdr nums) current-num (add1 current-count) result)]
+      [else
+       (loop (cdr nums)
+             (car nums)
+             1
+             (cons (list current-num current-count) result))])))
+
+; Expand value-frequency pairs into sorted list
+(define (expand-pairs pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'q' to quit): ")
+  (let ([filename (string-trim (read-line))])
+    (if (string-ci=? filename "q")
+        #f
+        filename)))
+
+(define (main)
+  (let loop ()
+    (define filename (ask-for-filename))
+    (if filename
+        (let ([contents (read-file-contents filename)])
+          (if contents
+              (let* ([numbers (parse-numbers contents)]
+                     [pairs (consolidate-numbers numbers)]
+                     [sorted (expand-pairs pairs)])
+                (newline)
+                (displayln "Original data:")
+                (displayln numbers)
+                (displayln "\nSorted data:")
+                (displayln sorted))
+              (displayln "Please try again."))
+          (loop))
+        (displayln "Goodbye! <3"))))
+
+(main)
+8:47 PM 2/6/2025
+- Prompt:
+Organize it lowest number to highest
+
+AI Code:
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Convert string of numbers to list of integers
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+; Create value-frequency pairs from a list of numbers
+; Now explicitly sorting in ascending order
+(define (consolidate-numbers numbers)
+  (let loop ([nums (sort numbers <)]  ; Sort in ascending order
+             [current-num #f]
+             [current-count 0]
+             [result '()])
+    (cond
+      [(null? nums)
+       (if current-num
+           (reverse (cons (list current-num current-count) result))  ; Reverse to maintain ascending order
+           (reverse result))]
+      [(not current-num)
+       (loop (cdr nums) (car nums) 1 result)]
+      [(= current-num (car nums))
+       (loop (cdr nums) current-num (add1 current-count) result)]
+      [else
+       (loop (cdr nums)
+             (car nums)
+             1
+             (cons (list current-num current-count) result))])))
+
+; Expand value-frequency pairs into sorted list
+(define (expand-pairs pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'q' to quit): ")
+  (let ([filename (string-trim (read-line))])
+    (if (string-ci=? filename "q")
+        #f
+        filename)))
+
+(define (main)
+  (let loop ()
+    (define filename (ask-for-filename))
+    (if filename
+        (let ([contents (read-file-contents filename)])
+          (if contents
+              (let* ([numbers (parse-numbers contents)]
+                     [pairs (consolidate-numbers numbers)]
+                     [sorted (expand-pairs pairs)])
+                (newline)
+                (displayln "Original data:")
+                (displayln numbers)
+                (displayln "\nSorted data:")
+                (displayln sorted))
+              (displayln "Please try again."))
+          (loop))
+        (displayln "Goodbye! <3"))))
+
+(main)
+
+6:34 PM 2/8/2025
+- Prompt:
+it is not sorting he value-frquency pairs
+
+AI Code:
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Convert string of numbers to list of integers
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+; Helper function to sort value-frequency pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Create value-frequency pairs from a list of numbers
+(define (consolidate-numbers numbers)
+  (let loop ([nums (sort numbers <)]  ; Sort the input numbers
+             [result '()])
+    (cond
+      [(null? nums)
+       (sort-pairs result)]  ; Sort the pairs at the end
+      [else
+       (let* ([current-num (car nums)]
+              [count (length (filter (lambda (x) (= x current-num)) nums))]
+              [remaining (filter (lambda (x) (not (= x current-num))) nums)])
+         (loop remaining
+               (cons (list current-num count) result)))])))
+
+; Expand value-frequency pairs into sorted list
+(define (expand-pairs pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'q' to quit): ")
+  (let ([filename (string-trim (read-line))])
+    (if (string-ci=? filename "q")
+        #f
+        filename)))
+
+(define (main)
+  (let loop ()
+    (define filename (ask-for-filename))
+    (if filename
+        (let ([contents (read-file-contents filename)])
+          (if contents
+              (let* ([numbers (parse-numbers contents)]
+                     [pairs (consolidate-numbers numbers)]
+                     [sorted (expand-pairs pairs)])
+                (newline)
+                (displayln "Original data:")
+                (displayln numbers)
+                (displayln "\nValue-frequency pairs:")
+                (displayln pairs)
+                (displayln "\nSorted data:")
+                (displayln sorted))
+              (displayln "Please try again."))
+          (loop))
+        (displayln "Goodbye! <3"))))
+
+(main)
+
+
+7:00 PM 2/8/2025
+- Prompt:
+There is a data structure called a hash that you will find useful. There are 2 versions in Racket, one that is functional, the other procedural. ◦ Functional version: the insert & remove functions take a hash, & an item, and return a reference to a new hash. ◦ Procedural version: The insert & remove functions modify the structure in place. ◦ For this course, you can use either version, but be consistent in which you use. Which one are you using?
+
+AI Response:
+For this counting sort implementation, I recommend using the procedural hash version because:
+
+We're doing many updates while counting frequencies
+We don't need immutability since we're processing sequentially
+It's more efficient for our specific use case
+The exclamation mark in hash-set! makes it clear we're doing mutations
+
+7:22 PM 2/8/2025
+- Prompt:
+Give this options to the user: Utility functions you will probably find useful:◦ Given a list of integers, return a list of value-count pairs◦ Sort a list of value-count pairs by value◦ Given a sorted list of value-count pairs, produce a sorted list of integers◦ Given a list of integers, confirm the list is sorted
+Also use the prefered hash structured
+
+AI Code:
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Utility function 1: Convert list of integers to value-count pairs using hash
+(define (make-value-count-pairs numbers)
+  (let ([freq-hash (make-hash)])  ; Create mutable hash
+    ; Count frequencies
+    (for ([num numbers])
+      (hash-set! freq-hash num (add1 (hash-ref freq-hash num 0))))
+    ; Convert hash to list of pairs
+    (hash->list freq-hash)))
+
+; Utility function 2: Sort value-count pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Utility function 3: Convert sorted pairs to sorted list
+(define (pairs->sorted-list pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+; Utility function 4: Check if list is sorted
+(define (is-sorted? lst)
+  (or (null? lst)
+      (null? (cdr lst))
+      (and (<= (car lst) (cadr lst))
+           (is-sorted? (cdr lst)))))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+(define (display-menu)
+  (newline)
+  (displayln "Available Operations:")
+  (displayln "1. Convert list to value-count pairs")
+  (displayln "2. Sort value-count pairs")
+  (displayln "3. Convert pairs to sorted list")
+  (displayln "4. Check if list is sorted")
+  (displayln "5. Load numbers from file")
+  (displayln "q. Quit")
+  (display "Select an operation (1-5, q): "))
+
+(define (process-numbers numbers op)
+  (case op
+    ['1 (let ([pairs (make-value-count-pairs numbers)])
+          (displayln "\nOriginal numbers:")
+          (displayln numbers)
+          (displayln "\nValue-count pairs:")
+          (displayln pairs))]
+    ['2 (let* ([pairs (make-value-count-pairs numbers)]
+               [sorted-pairs (sort-pairs pairs)])
+          (displayln "\nUnsorted pairs:")
+          (displayln pairs)
+          (displayln "\nSorted pairs:")
+          (displayln sorted-pairs))]
+    ['3 (let* ([pairs (make-value-count-pairs numbers)]
+               [sorted-pairs (sort-pairs pairs)]
+               [sorted-list (pairs->sorted-list sorted-pairs)])
+          (displayln "\nOriginal numbers:")
+          (displayln numbers)
+          (displayln "\nSorted numbers:")
+          (displayln sorted-list))]
+    ['4 (begin
+          (displayln "\nChecking if list is sorted...")
+          (displayln (if (is-sorted? numbers)
+                        "The list is sorted!"
+                        "The list is NOT sorted.")))]
+    [else (displayln "Invalid operation")]))
+
+(define (main)
+  (let ([current-numbers '()])
+    (let loop ()
+      (display-menu)
+      (let ([choice (read-line)])
+        (cond
+          [(string-ci=? choice "q")
+           (displayln "Goodbye! <3")]
+          [(string-ci=? choice "5")
+           (display "Enter filename: ")
+           (let* ([filename (read-line)]
+                  [contents (read-file-contents filename)])
+             (when contents
+               (set! current-numbers (parse-numbers contents))
+               (displayln "\nLoaded numbers:")
+               (displayln current-numbers))
+             (loop))]
+          [(and (string->number choice)
+                (<= 1 (string->number choice) 4))
+           (if (null? current-numbers)
+               (displayln "\nPlease load numbers first (option 5)")
+               (process-numbers current-numbers (string->number choice)))
+           (loop)]
+          [else
+           (displayln "\nInvalid choice. Please try again.")
+           (loop)])))))
+
+(main)
+
+
+9:04 PM 2/10/2025
+- Prompt;
+Error, not handling the numbers right
+
+AI Code/Response:
+The issue is that your program isn't handling an empty list of numbers correctly. Before processing any operations 1-4, you should first load numbers (option 5). Let me fix the error handling and messaging.
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Utility function 1: Convert list of integers to value-count pairs using hash
+(define (make-value-count-pairs numbers)
+  (let ([freq-hash (make-hash)])  ; Create mutable hash
+    ; Count frequencies
+    (for ([num numbers])
+      (hash-set! freq-hash num (add1 (hash-ref freq-hash num 0))))
+    ; Convert hash to list of pairs
+    (hash->list freq-hash)))
+
+; Utility function 2: Sort value-count pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Utility function 3: Convert sorted pairs to sorted list
+(define (pairs->sorted-list pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+; Utility function 4: Check if list is sorted
+(define (is-sorted? lst)
+  (or (null? lst)
+      (null? (cdr lst))
+      (and (<= (car lst) (cadr lst))
+           (is-sorted? (cdr lst)))))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+(define (display-menu)
+  (newline)
+  (displayln "Available Operations:")
+  (displayln "1. Convert list to value-count pairs")
+  (displayln "2. Sort value-count pairs")
+  (displayln "3. Convert pairs to sorted list")
+  (displayln "4. Check if list is sorted")
+  (displayln "5. Load numbers from file")
+  (displayln "q. Quit")
+  (display "Select an operation (1-5, q): "))
+
+(define (process-numbers numbers op)
+  (case op
+    ['1 (let ([pairs (make-value-count-pairs numbers)])
+          (displayln "\nOriginal numbers:")
+          (displayln numbers)
+          (displayln "\nValue-count pairs:")
+          (displayln pairs))]
+    ['2 (let* ([pairs (make-value-count-pairs numbers)]
+               [sorted-pairs (sort-pairs pairs)])
+          (displayln "\nUnsorted pairs:")
+          (displayln pairs)
+          (displayln "\nSorted pairs:")
+          (displayln sorted-pairs))]
+    ['3 (let* ([pairs (make-value-count-pairs numbers)]
+               [sorted-pairs (sort-pairs pairs)]
+               [sorted-list (pairs->sorted-list sorted-pairs)])
+          (displayln "\nOriginal numbers:")
+          (displayln numbers)
+          (displayln "\nSorted numbers:")
+          (displayln sorted-list))]
+    ['4 (begin
+          (displayln "\nChecking if list is sorted...")
+          (displayln (if (is-sorted? numbers)
+                        "The list is sorted!"
+                        "The list is NOT sorted.")))]
+    [else (displayln "Invalid operation")]))
+
+(define (main)
+  (displayln "\nPlease load a file first (option 5) before using other operations.")
+  (let ([current-numbers '()])
+    (let loop ()
+      (display-menu)
+      (let ([choice (read-line)])
+        (cond
+          [(string-ci=? choice "q")
+           (displayln "Goodbye! <3")]
+          [(string-ci=? choice "5")
+           (display "Enter filename: ")
+           (let* ([filename (read-line)]
+                  [contents (read-file-contents filename)])
+             (when contents
+               (set! current-numbers (parse-numbers contents))
+               (displayln "\nLoaded numbers:")
+               (displayln current-numbers))
+             (loop))]
+          [(and (string->number choice)
+                (<= 1 (string->number choice) 4))
+           (if (null? current-numbers)
+               (begin
+                 (displayln "\nNo numbers loaded! Please use option 5 to load a file first.")
+                 (loop))
+               (begin
+                 (process-numbers current-numbers (string->number choice))
+                 (loop)))]
+          [else
+           (displayln "\nInvalid choice. Please enter a number between 1-5 or 'q' to quit.")
+           (loop)])))))
+
+(main)
+
+5:17 PM 2/12/2025
+- Prompt:
+I ned the code to ask the user whether they want to convert list to value-count pairs, sort value-coubt pairs, Given a sorted list of value-count pairs, produce a sorted list of integers and Given a list of integers, confirm the list is sorted
+
+AI Code;
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Utility function 1: Convert list of integers to value-count pairs using hash
+(define (make-value-count-pairs numbers)
+  (let ([freq-hash (make-hash)])  ; Create mutable hash
+    ; Count frequencies
+    (for ([num numbers])
+      (hash-set! freq-hash num (add1 (hash-ref freq-hash num 0))))
+    ; Convert hash to list of pairs
+    (hash->list freq-hash)))
+
+; Utility function 2: Sort value-count pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Utility function 3: Convert sorted pairs to sorted list
+(define (pairs->sorted-list pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+; Utility function 4: Check if list is sorted
+(define (is-sorted? lst)
+  (or (null? lst)
+      (null? (cdr lst))
+      (and (<= (car lst) (cadr lst))
+           (is-sorted? (cdr lst)))))
+
+(define (display-menu)
+  (newline)
+  (displayln "Available Operations:")
+  (displayln "1. Convert list to value-count pairs")
+  (displayln "2. Sort value-count pairs")
+  (displayln "3. Convert pairs to sorted list")
+  (displayln "4. Check if list is sorted")
+  (displayln "5. Enter new numbers")
+  (displayln "q. Quit")
+  (display "Select an operation (1-5, q): "))
+
+(define (get-numbers)
+  (display "\nEnter space-separated numbers (e.g., 1 2 3 2 2 3 5 -1): ")
+  (let ([input (read-line)])
+    (map string->number 
+         (filter (lambda (s) (not (string=? s "")))
+                (string-split input)))))
+
+(define (process-numbers numbers op)
+  (case op
+    ['1 (let ([pairs (make-value-count-pairs numbers)])
+          (displayln "\nOriginal numbers:")
+          (displayln numbers)
+          (displayln "\nValue-count pairs:")
+          (displayln pairs))]
+    ['2 (let* ([pairs (make-value-count-pairs numbers)]
+               [sorted-pairs (sort-pairs pairs)])
+          (displayln "\nUnsorted pairs:")
+          (displayln pairs)
+          (displayln "\nSorted pairs:")
+          (displayln sorted-pairs))]
+    ['3 (let* ([pairs (make-value-count-pairs numbers)]
+               [sorted-pairs (sort-pairs pairs)]
+               [sorted-list (pairs->sorted-list sorted-pairs)])
+          (displayln "\nOriginal numbers:")
+          (displayln numbers)
+          (displayln "\nSorted numbers:")
+          (displayln sorted-list))]
+    ['4 (begin
+          (displayln "\nChecking if list is sorted...")
+          (displayln (if (is-sorted? numbers)
+                        "The list is sorted!"
+                        "The list is NOT sorted.")))]
+    [else (displayln "Invalid operation")]))
+
+(define (main)
+  (displayln "\nPlease enter some numbers (option 5) before using other operations.")
+  (let ([current-numbers '()])
+    (let loop ()
+      (display-menu)
+      (let* ([choice (read-line)]
+             [num-choice (if (string=? choice "1") 1
+                           (if (string=? choice "2") 2
+                           (if (string=? choice "3") 3
+                           (if (string=? choice "4") 4
+                           (if (string=? choice "5") 5
+                           #f)))))])
+        (cond
+          [(string-ci=? choice "q")
+           (displayln "Goodbye! <3")]
+          [(equal? num-choice 5)
+           (set! current-numbers (get-numbers))
+           (displayln "\nCurrent numbers:")
+           (displayln current-numbers)
+           (loop)]
+          [(and num-choice (<= 1 num-choice 4))
+           (if (null? current-numbers)
+               (begin
+                 (displayln "\nNo numbers entered! Please use option 5 to enter numbers first.")
+                 (loop))
+               (begin
+                 (process-numbers current-numbers num-choice)
+                 (loop)))]
+          [else
+           (displayln "\nInvalid choice. Please enter a number between 1-5 or 'q' to quit.")
+           (loop)])))))
+
+(main)
+
+
+5:41 PM 2/12/2025
+- Pormpt;
+It is not accepting the input, and instead its outputting "Invalid choice. Please enter A, B, C, D, or Q."
+
+AI Code;
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Utility function 1: Convert list to value-count pairs using hash
+(define (make-value-count-pairs numbers)
+  (let ([freq-hash (make-hash)])
+    (for ([num numbers])
+      (hash-set! freq-hash num (add1 (hash-ref freq-hash num 0))))
+    (hash->list freq-hash)))
+
+; Utility function 2: Sort value-count pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Utility function 3: Convert pairs to sorted list
+(define (pairs->sorted-list pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+; Utility function 4: Check if list is sorted
+(define (is-sorted? lst)
+  (or (null? lst)
+      (null? (cdr lst))
+      (and (<= (car lst) (cadr lst))
+           (is-sorted? (cdr lst)))))
+
+(define (get-operation)
+  (displayln "\nWhat would you like to do?")
+  (displayln "A) Convert list to value-count pairs")
+  (displayln "B) Sort value-count pairs")
+  (displayln "C) Given a sorted list of value-count pairs, produce a sorted list of integers")
+  (displayln "D) Given a list of integers, confirm the list is sorted")
+  (displayln "Q) Quit")
+  (display "Your choice (A/B/C/D/Q): ")
+  (read-line))
+
+(define (get-numbers prompt)
+  (display prompt)
+  (let ([input (read-line)])
+    (map string->number 
+         (filter (lambda (s) (not (string=? s "")))
+                (string-split input)))))
+
+(define (process-operation choice)
+  (let ([choice (string-upcase (string-trim choice))])
+    (cond
+      [(string=? choice "A")
+       (let* ([nums (get-numbers "\nEnter space-separated numbers to convert (e.g., 1 2 3 2 2 3 5 -1): ")]
+              [pairs (make-value-count-pairs nums)])
+         (displayln "\nOriginal numbers:")
+         (displayln nums)
+         (displayln "\nValue-count pairs:")
+         (displayln pairs))
+       #t]
+      [(string=? choice "B")
+       (let* ([nums (get-numbers "\nEnter space-separated numbers to create and sort pairs (e.g., 1 2 3 2 2 3 5 -1): ")]
+              [pairs (make-value-count-pairs nums)]
+              [sorted-pairs (sort-pairs pairs)])
+         (displayln "\nUnsorted pairs:")
+         (displayln pairs)
+         (displayln "\nSorted pairs:")
+         (displayln sorted-pairs))
+       #t]
+      [(string=? choice "C")
+       (let* ([nums (get-numbers "\nEnter space-separated numbers to generate sorted list (e.g., 1 2 3 2 2 3 5 -1): ")]
+              [pairs (make-value-count-pairs nums)]
+              [sorted-pairs (sort-pairs pairs)]
+              [sorted-list (pairs->sorted-list sorted-pairs)])
+         (displayln "\nOriginal numbers:")
+         (displayln nums)
+         (displayln "\nSorted numbers:")
+         (displayln sorted-list))
+       #t]
+      [(string=? choice "D")
+       (let ([nums (get-numbers "\nEnter space-separated numbers to check if sorted (e.g., 1 2 3 4 5): ")])
+         (displayln "\nChecking if list is sorted...")
+         (displayln (if (is-sorted? nums)
+                       "The list is sorted!"
+                       "The list is NOT sorted.")))
+       #t]
+      [(string=? choice "Q")
+       #f]
+      [else
+       (displayln "\nInvalid choice. Please enter A, B, C, D, or Q.")
+       #t])))
+
+(define (main)
+  (let loop ()
+    (let ([continue? (process-operation (get-operation))])
+      (when continue?
+        (loop))))
+  (displayln "\nGoodbye! <3"))
+
+(main)
+
+3:43 PM 2/14/2025
+- Prompt:
+looks like It finally accepting the input, however before asking what option they would like, the program should ask the user for a file name and based on the file, it should do the operation asked
+
+AI Code;
+#lang racket
+(displayln "Welcome <3!")
+
+(require racket/string)
+
+; Utility function 1: Convert list to value-count pairs using hash
+(define (make-value-count-pairs numbers)
+  (let ([freq-hash (make-hash)])
+    (for ([num numbers])
+      (hash-set! freq-hash num (add1 (hash-ref freq-hash num 0))))
+    (hash->list freq-hash)))
+
+; Utility function 2: Sort value-count pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Utility function 3: Convert pairs to sorted list
+(define (pairs->sorted-list pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+; Utility function 4: Check if list is sorted
+(define (is-sorted? lst)
+  (or (null? lst)
+      (null? (cdr lst))
+      (and (<= (car lst) (cadr lst))
+           (is-sorted? (cdr lst)))))
+
+(define (read-file-contents filename) 
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")
+                        #f]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")
+                        #f]
+                       [else
+                        (displayln "Error: Unable to read file.")
+                        #f]))])  
+    (let ([in (open-input-file filename)])  
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+(define (parse-numbers str)
+  (map string->number 
+       (filter (lambda (s) (not (string=? s "")))
+              (string-split str))))
+
+(define (get-operation)
+  (displayln "\nWhat would you like to do?")
+  (displayln "A) Convert list to value-count pairs")
+  (displayln "B) Sort value-count pairs")
+  (displayln "C) Given a sorted list of value-count pairs, produce a sorted list of integers")
+  (displayln "D) Given a list of integers, confirm the list is sorted")
+  (displayln "Q) Quit")
+  (display "Your choice (A/B/C/D/Q): ")
+  (read-line))
+
+(define (process-operation choice numbers)
+  (let ([choice (string-upcase (string-trim choice))])
+    (cond
+      [(string=? choice "A")
+       (let ([pairs (make-value-count-pairs numbers)])
+         (displayln "\nOriginal numbers:")
+         (displayln numbers)
+         (displayln "\nValue-count pairs:")
+         (displayln pairs))
+       #t]
+      [(string=? choice "B")
+       (let* ([pairs (make-value-count-pairs numbers)]
+              [sorted-pairs (sort-pairs pairs)])
+         (displayln "\nUnsorted pairs:")
+         (displayln pairs)
+         (displayln "\nSorted pairs:")
+         (displayln sorted-pairs))
+       #t]
+      [(string=? choice "C")
+       (let* ([pairs (make-value-count-pairs numbers)]
+              [sorted-pairs (sort-pairs pairs)]
+              [sorted-list (pairs->sorted-list sorted-pairs)])
+         (displayln "\nOriginal numbers:")
+         (displayln numbers)
+         (displayln "\nSorted numbers:")
+         (displayln sorted-list))
+       #t]
+      [(string=? choice "D")
+       (displayln "\nChecking if list is sorted...")
+       (displayln (if (is-sorted? numbers)
+                     "The list is sorted!"
+                     "The list is NOT sorted."))
+       #t]
+      [(string=? choice "Q")
+       #f]
+      [else
+       (displayln "\nInvalid choice. Please enter A, B, C, D, or Q.")
+       #t])))
+
+(define (main)
+  (display "Enter the file name: ")
+  (let* ([filename (read-line)]
+         [contents (read-file-contents filename)])
+    (if contents
+        (let ([numbers (parse-numbers contents)])
+          (displayln "\nLoaded numbers:")
+          (displayln numbers)
+          (let loop ()
+            (let ([continue? (process-operation (get-operation) numbers)])
+              (when continue?
+                (loop))))
+          (displayln "\nGoodbye! <3"))
+        (displayln "\nFailed to load file. Program ending."))))
+
+(main)
+
+4:44 PM 2/14/2025
+- Prompt;
+Was not reading files correctly again, therefore I combined a previous code that was reading the files and the last code that was reading the input right and combined them.
+
+AI Code;
+#lang racket
+
+(displayln "Welcome <3!")
+(require racket/string)
+
+; Utility function 1: Convert list to value-count pairs using hash
+(define (make-value-count-pairs numbers)
+  (let ([freq-hash (make-hash)])
+    (for ([num numbers])
+      (hash-set! freq-hash num (add1 (hash-ref freq-hash num 0))))
+    (hash->list freq-hash)))
+
+; Utility function 2: Sort value-count pairs by value
+(define (sort-pairs pairs)
+  (sort pairs < #:key first))
+
+; Utility function 3: Convert pairs to sorted list
+(define (pairs->sorted-list pairs)
+  (apply append
+         (map (lambda (pair)
+                (make-list (second pair) (first pair)))
+              pairs)))
+
+; Utility function 4: Check if list is sorted
+(define (is-sorted? lst)
+  (or (null? lst)
+      (null? (cdr lst))
+      (and (<= (car lst) (cadr lst))
+           (is-sorted? (cdr lst)))))
+
+; File reading function
+(define (read-file-contents filename)
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail?
+                   (lambda (exn)
+                     (define msg (exn-message exn))
+                     (displayln (format "Debug: Exception caught - ~a" msg))
+                     (cond
+                       [(string-contains? msg "No such file or directory")
+                        (displayln "Error: File not found.")]
+                       [(string-contains? msg "Permission denied")
+                        (displayln "Error: Permission denied.")]
+                       [else
+                        (displayln "Error: Unable to read file.")])
+                     #f)])
+    (let ([in (open-input-file filename)])
+      (define contents (port->string in))
+      (close-input-port in)
+      contents)))
+
+; Parse numbers from string
+(define (parse-numbers str)
+  (map string->number
+       (filter (lambda (s) (not (string=? s "")))
+               (string-split str))))
+
+(define (get-operation)
+  (displayln "\nWhat would you like to do?")
+  (displayln "A) Convert list to value-count pairs")
+  (displayln "B) Sort value-count pairs")
+  (displayln "C) Given a sorted list of value-count pairs, produce a sorted list of integers")
+  (displayln "D) Given a list of integers, confirm the list is sorted")
+  (displayln "Q) Quit")
+  (display "Your choice (A/B/C/D/Q): ")
+  (read-line))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'q' to quit): ")
+  (let ([filename (string-trim (read-line))])
+    (if (string-ci=? filename "q")
+        #f
+        filename)))
+
+(define (process-operation choice numbers)
+  (let ([choice (string-upcase (string-trim choice))])
+    (cond
+      [(string=? choice "A")
+       (let ([pairs (make-value-count-pairs numbers)])
+         (displayln "\nOriginal numbers:")
+         (displayln numbers)
+         (displayln "\nValue-count pairs:")
+         (displayln pairs))
+       #t]
+      [(string=? choice "B")
+       (let* ([pairs (make-value-count-pairs numbers)]
+              [sorted-pairs (sort-pairs pairs)])
+         (displayln "\nUnsorted pairs:")
+         (displayln pairs)
+         (displayln "\nSorted pairs:")
+         (displayln sorted-pairs))
+       #t]
+      [(string=? choice "C")
+       (let* ([pairs (make-value-count-pairs numbers)]
+              [sorted-pairs (sort-pairs pairs)]
+              [sorted-list (pairs->sorted-list sorted-pairs)])
+         (displayln "\nOriginal numbers:")
+         (displayln numbers)
+         (displayln "\nSorted numbers:")
+         (displayln sorted-list))
+       #t]
+      [(string=? choice "D")
+       (displayln "\nChecking if list is sorted...")
+       (displayln (if (is-sorted? numbers)
+                     "The list is sorted!"
+                     "The list is NOT sorted."))
+       #t]
+      [(string=? choice "Q")
+       #f]
+      [else
+       (displayln "\nInvalid choice. Please enter A, B, C, D, or Q.")
+       #t])))
+
+(define (main)
+  (let filename-loop ()
+    (define filename (ask-for-filename))
+    (when filename
+      (let ([contents (read-file-contents filename)])
+        (if contents
+            (let ([numbers (parse-numbers contents)])
+              (let operation-loop ()
+                (let ([continue? (process-operation (get-operation) numbers)])
+                  (when continue?
+                    (operation-loop)))))
+            (displayln "Please try again.")))
+      (filename-loop)))
+  (displayln "\nGoodbye! <3"))
+
+(main)
+
+5:08 PM 2/15/2025
+- Prompt;
+My assignment says this: Performs well even for large (10M+ item) lists. (Exact timing studies are not necessary, but
+a correct implementation should be able to sort 10M+ numbers within a few seconds of
+wall-clock time.) I have a very large file, and it takes very long
+
+AI Code:
+#lang racket
+
+(displayln "Welcome <3!")
+(require racket/string)
+(require racket/list)
+
+; Utility function 1: Convert list to value-count pairs efficiently
+(define (make-value-count-pairs numbers)
+  (define counts (make-hash))
+  (for ([n numbers]) (hash-update! counts n add1 0))
+  (sort (hash-map counts list) < #:key first))
+
+; Utility function 2: Convert pairs to sorted list efficiently
+(define (pairs->sorted-list pairs)
+  (apply append (map (lambda (pair) (build-list (second pair) (λ (_) (first pair)))) pairs)))
+
+; Utility function 3: Check if list is sorted
+(define (is-sorted? lst)
+  (for/and ([a lst] [b (cdr lst)]) (<= a b)))
+
+; File reading function optimized for large files
+(define (read-file-contents filename)
+  (displayln (format "Attempting to open ~a" filename))
+  (display "\t...")
+  (with-handlers ([exn:fail? (lambda (exn)
+                               (define msg (exn-message exn))
+                               (displayln (format "Debug: Exception caught - ~a" msg))
+                               (cond
+                                 [(string-contains? msg "No such file or directory")
+                                  (displayln "Error: File not found.")]
+                                 [(string-contains? msg "Permission denied")
+                                  (displayln "Error: Permission denied.")]
+                                 [else
+                                  (displayln "Error: Unable to read file.")])
+                               #f)])
+    (call-with-input-file filename
+      (lambda (in)
+        (define numbers '())
+        (for ([line (in-lines in)])
+          (set! numbers (append numbers (map string->number (string-split line)))))
+        numbers))))
+
+; User input functions
+(define (get-operation)
+  (displayln "\nEnter 'Q' once to return to the file selection menu.")
+  (displayln "\nWhat would you like to do?")
+  (displayln "A) Convert list to value-count pairs")
+  (displayln "B) Sort value-count pairs")
+  (displayln "C) Given a sorted list of value-count pairs, produce a sorted list of integers")
+  (displayln "D) Given a list of integers, confirm the list is sorted")
+  (displayln "Q) Quit")
+  (display "Your choice (A/B/C/D/Q): ")
+  (read-line))
+
+(define (ask-for-filename)
+  (newline)
+  (display "Enter the file name (or 'q' to quit): ")
+  (let ([filename (string-trim (read-line))])
+    (if (string-ci=? filename "q")
+        #f
+        filename)))
+
+(define (process-operation choice numbers)
+  (let ([choice (string-upcase (string-trim choice))])
+    (cond
+      [(string=? choice "A")
+       (let ([pairs (make-value-count-pairs numbers)])
+         (displayln "\nOriginal numbers:")
+         (displayln numbers)
+         (displayln "\nValue-count pairs:")
+         (displayln pairs))
+       #t]
+      [(string=? choice "B")
+       (let ([sorted-pairs (make-value-count-pairs numbers)])
+         (displayln "\nSorted pairs:")
+         (displayln sorted-pairs))
+       #t]
+      [(string=? choice "C")
+       (let* ([pairs (make-value-count-pairs numbers)]
+              [sorted-list (pairs->sorted-list pairs)])
+         (displayln "\nOriginal numbers:")
+         (displayln numbers)
+         (displayln "\nSorted numbers:")
+         (displayln sorted-list))
+       #t]
+      [(string=? choice "D")
+       (displayln "\nChecking if list is sorted...")
+       (displayln (if (is-sorted? numbers)
+                     "The list is sorted!"
+                     "The list is NOT sorted."))
+       #t]
+      [(string=? choice "Q")
+       #f]
+      [else
+       (displayln "\nInvalid choice. Please enter A, B, C, D, or Q.")
+       #t])))
+
+(define (main)
+  (let filename-loop ()
+    (define filename (ask-for-filename))
+    (when filename
+      (let ([numbers (read-file-contents filename)])
+        (if numbers
+            (let operation-loop ()
+              (let ([continue? (process-operation (get-operation) numbers)])
+                (when continue?
+                  (operation-loop))))
+            (displayln "Please try again.")))
+      (filename-loop)))
+  (displayln "\nGoodbye! <3"))
+
+(main)
+6:56 PM 2/15/2025
